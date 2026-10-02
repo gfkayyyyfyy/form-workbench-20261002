@@ -100,11 +100,10 @@ def _validate(fields, answers):
             elif "maxLength" in field and len(value) > field["maxLength"]:
                 errors[fid] = "max_length"
         elif ftype == "number":
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(value)
-            ):
+            # int 为任意精度，必然有限；仅 float 需排除 inf/nan（如 1e400 解析为 inf）
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                errors[fid] = "type"
+            elif isinstance(value, float) and not math.isfinite(value):
                 errors[fid] = "type"
         elif ftype == "select":
             if not isinstance(value, str):
