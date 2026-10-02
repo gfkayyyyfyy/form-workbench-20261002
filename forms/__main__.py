@@ -68,6 +68,15 @@ def _check_form(form):
                 or len(set(options)) != len(options)
             ):
                 _invalid_input()
+        if "maxLength" in field:
+            max_length = field["maxLength"]
+            if (
+                ftype != "text"
+                or isinstance(max_length, bool)
+                or not isinstance(max_length, int)
+                or max_length < 0
+            ):
+                _invalid_input()
     return fields
 
 
@@ -91,6 +100,8 @@ def _validate(fields, answers):
         if ftype == "text":
             if not isinstance(value, str):
                 errors[fid] = "type"
+            elif "maxLength" in field and len(value) > field["maxLength"]:
+                errors[fid] = "max_length"
         elif ftype == "number":
             if (
                 isinstance(value, bool)
