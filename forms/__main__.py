@@ -65,6 +65,14 @@ def _check_form(form):
             max_length = field["maxLength"]
             if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 0:
                 _invalid_input()
+        if "minLength" in field:
+            if ftype != "text":
+                _invalid_input()
+            min_length = field["minLength"]
+            if isinstance(min_length, bool) or not isinstance(min_length, int) or min_length < 0:
+                _invalid_input()
+        if "minLength" in field and "maxLength" in field and min_length > max_length:
+            _invalid_input()
         if ftype == "select":
             options = field.get("options")
             if (
@@ -99,6 +107,8 @@ def _validate(fields, answers):
                 errors[fid] = "type"
             elif "maxLength" in field and len(value) > field["maxLength"]:
                 errors[fid] = "max_length"
+            elif "minLength" in field and len(value) < field["minLength"]:
+                errors[fid] = "min_length"
         elif ftype == "number":
             # int 为任意精度，必然有限；仅 float 需排除 inf/nan（如 1e400 解析为 inf）
             if isinstance(value, bool) or not isinstance(value, (int, float)):
