@@ -9,6 +9,11 @@ import sys
 VALID_TYPES = ("text", "number", "select")
 
 
+def _is_nonneg_int(value):
+    """长度配置只接受大于等于零的 JSON 整数（布尔不算整数）。"""
+    return not isinstance(value, bool) and isinstance(value, int) and value >= 0
+
+
 def _emit(payload, code):
     json.dump(payload, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
@@ -60,10 +65,13 @@ def _check_form(form):
         if not isinstance(field.get("required", False), bool):
             _invalid_input()
         if "maxLength" in field:
-            if ftype != "text":
+            if ftype != "text" or not _is_nonneg_int(field["maxLength"]):
                 _invalid_input()
-            max_length = field["maxLength"]
-            if isinstance(max_length, bool) or not isinstance(max_length, int) or max_length < 0:
+        if "minLength" in field:
+            if ftype != "text" or not _is_nonneg_int(field["minLength"]):
+                _invalid_input()
+        if "minLength" in field and "maxLength" in field:
+            if field["minLength"] > field["maxLength"]:
                 _invalid_input()
         if ftype == "select":
             options = field.get("options")
@@ -99,6 +107,8 @@ def _validate(fields, answers):
                 errors[fid] = "type"
             elif "maxLength" in field and len(value) > field["maxLength"]:
                 errors[fid] = "max_length"
+            elif "minLength" in field and len(value) < field["minLength"]:
+                errors[fid] = "min_length"
         elif ftype == "number":
             # int 为任意精度，必然有限；仅 float 需排除 inf/nan（如 1e400 解析为 inf）
             if isinstance(value, bool) or not isinstance(value, (int, float)):
