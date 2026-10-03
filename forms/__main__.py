@@ -73,6 +73,14 @@ def _check_form(form):
                 _invalid_input()
         if "minLength" in field and "maxLength" in field and min_length > max_length:
             _invalid_input()
+        if "minimum" in field:
+            if ftype != "number":
+                _invalid_input()
+            minimum = field["minimum"]
+            if isinstance(minimum, bool) or not isinstance(minimum, (int, float)):
+                _invalid_input()
+            if isinstance(minimum, float) and not math.isfinite(minimum):
+                _invalid_input()
         if ftype == "select":
             options = field.get("options")
             if (
@@ -115,6 +123,9 @@ def _validate(fields, answers):
                 errors[fid] = "type"
             elif isinstance(value, float) and not math.isfinite(value):
                 errors[fid] = "type"
+            # int 与 float 混合比较在 Python 中为精确比较，大整数不会因舍入误判
+            elif "minimum" in field and value < field["minimum"]:
+                errors[fid] = "min_value"
         elif ftype == "select":
             if not isinstance(value, str):
                 errors[fid] = "type"
