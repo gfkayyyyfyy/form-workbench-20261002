@@ -5,6 +5,7 @@ import json
 import math
 import sqlite3
 import sys
+from decimal import Decimal
 
 VALID_TYPES = ("text", "number", "select")
 
@@ -73,6 +74,16 @@ def _check_form(form):
                 _invalid_input()
         if "minLength" in field and "maxLength" in field and min_length > max_length:
             _invalid_input()
+        if "minimum" in field:
+            if ftype != "number":
+                _invalid_input()
+            minimum = field["minimum"]
+            # bool 是 int 的子类，须先排除；仅接受有限的 int/float
+            # （1e400 会解码为 inf，同样拒绝）。
+            if isinstance(minimum, bool) or not isinstance(minimum, (int, float)):
+                _invalid_input()
+            if isinstance(minimum, float) and not math.isfinite(minimum):
+                _invalid_input()
         if ftype == "select":
             options = field.get("options")
             if (
@@ -115,6 +126,16 @@ def _validate(fields, answers):
                 errors[fid] = "type"
             elif isinstance(value, float) and not math.isfinite(value):
                 errors[fid] = "type"
+            elif "minimum" in field:
+                minimum = field["minimum"]
+                # 两侧均为 int 时直接按任意精度整数比较；否则用 Decimal
+                # 精确比较 float 的实际二进制值，避免大整数/小数舍入误判。
+                if isinstance(value, int) and isinstance(minimum, int):
+                    below = value < minimum
+                else:
+                    below = Decimal(value) < Decimal(minimum)
+                if below:
+                    errors[fid] = "min_value"
         elif ftype == "select":
             if not isinstance(value, str):
                 errors[fid] = "type"
