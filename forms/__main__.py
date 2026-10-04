@@ -84,6 +84,23 @@ def _check_form(form):
                 _invalid_input()
             if isinstance(minimum, float) and not math.isfinite(minimum):
                 _invalid_input()
+        if "maximum" in field:
+            if ftype != "number":
+                _invalid_input()
+            maximum = field["maximum"]
+            if isinstance(maximum, bool) or not isinstance(maximum, (int, float)):
+                _invalid_input()
+            if isinstance(maximum, float) and not math.isfinite(maximum):
+                _invalid_input()
+        if "minimum" in field and "maximum" in field:
+            # 两侧均为 int 时按任意精度整数比较；否则用 Decimal 精确比较，
+            # 避免大整数转 float 舍入后误判区间为空或非空。
+            if isinstance(minimum, int) and isinstance(maximum, int):
+                inverted = minimum > maximum
+            else:
+                inverted = Decimal(minimum) > Decimal(maximum)
+            if inverted:
+                _invalid_input()
         if ftype == "select":
             options = field.get("options")
             if (
@@ -94,6 +111,20 @@ def _check_form(form):
             ):
                 _invalid_input()
     return fields
+
+
+def _below_minimum(value, minimum):
+    # 两侧均为 int 时直接按任意精度整数比较；否则用 Decimal 精确比较
+    # float 的实际二进制值，避免大整数/小数舍入误判。
+    if isinstance(value, int) and isinstance(minimum, int):
+        return value < minimum
+    return Decimal(value) < Decimal(minimum)
+
+
+def _above_maximum(value, maximum):
+    if isinstance(value, int) and isinstance(maximum, int):
+        return value > maximum
+    return Decimal(value) > Decimal(maximum)
 
 
 def _validate(fields, answers):
@@ -126,16 +157,10 @@ def _validate(fields, answers):
                 errors[fid] = "type"
             elif isinstance(value, float) and not math.isfinite(value):
                 errors[fid] = "type"
-            elif "minimum" in field:
-                minimum = field["minimum"]
-                # 两侧均为 int 时直接按任意精度整数比较；否则用 Decimal
-                # 精确比较 float 的实际二进制值，避免大整数/小数舍入误判。
-                if isinstance(value, int) and isinstance(minimum, int):
-                    below = value < minimum
-                else:
-                    below = Decimal(value) < Decimal(minimum)
-                if below:
-                    errors[fid] = "min_value"
+            elif "minimum" in field and _below_minimum(value, field["minimum"]):
+                errors[fid] = "min_value"
+            elif "maximum" in field and _above_maximum(value, field["maximum"]):
+                errors[fid] = "max_value"
         elif ftype == "select":
             if not isinstance(value, str):
                 errors[fid] = "type"
