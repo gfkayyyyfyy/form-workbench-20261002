@@ -84,6 +84,27 @@ def _check_form(form):
                 _invalid_input()
             if isinstance(minimum, float) and not math.isfinite(minimum):
                 _invalid_input()
+        if "maximum" in field:
+            if ftype != "number":
+                _invalid_input()
+            maximum = field["maximum"]
+            # 规则与 minimum 相同：排除 bool，仅接受有限的 int/float。
+            if isinstance(maximum, bool) or not isinstance(maximum, (int, float)):
+                _invalid_input()
+            if isinstance(maximum, float) and not math.isfinite(maximum):
+                _invalid_input()
+        if "minimum" in field and "maximum" in field:
+            # 两侧均为 int 时直接按任意精度整数比较；否则用 Decimal
+            # 精确比较 float 的实际二进制值。下限大于上限表单不合法，
+            # 相等时仅该数值本身能通过区间检查。
+            minimum = field["minimum"]
+            maximum = field["maximum"]
+            if isinstance(minimum, int) and isinstance(maximum, int):
+                inverted = minimum > maximum
+            else:
+                inverted = Decimal(minimum) > Decimal(maximum)
+            if inverted:
+                _invalid_input()
         if ftype == "select":
             options = field.get("options")
             if (
@@ -126,16 +147,18 @@ def _validate(fields, answers):
                 errors[fid] = "type"
             elif isinstance(value, float) and not math.isfinite(value):
                 errors[fid] = "type"
-            elif "minimum" in field:
-                minimum = field["minimum"]
+            elif "minimum" in field or "maximum" in field:
                 # 两侧均为 int 时直接按任意精度整数比较；否则用 Decimal
                 # 精确比较 float 的实际二进制值，避免大整数/小数舍入误判。
-                if isinstance(value, int) and isinstance(minimum, int):
-                    below = value < minimum
-                else:
-                    below = Decimal(value) < Decimal(minimum)
-                if below:
+                def _less(left, right):
+                    if isinstance(left, int) and isinstance(right, int):
+                        return left < right
+                    return Decimal(left) < Decimal(right)
+
+                if "minimum" in field and _less(value, field["minimum"]):
                     errors[fid] = "min_value"
+                elif "maximum" in field and _less(field["maximum"], value):
+                    errors[fid] = "max_value"
         elif ftype == "select":
             if not isinstance(value, str):
                 errors[fid] = "type"
