@@ -1,8 +1,12 @@
-"""命令行入口：python -m forms submit --form f.json --answers a.json --db data.db"""
+"""命令行入口：
+python -m forms submit --form f.json --answers a.json --db data.db
+python -m forms show --db data.db --id 1
+"""
 
 import argparse
 import json
 import math
+import os
 import sqlite3
 import sys
 from decimal import Decimal
@@ -204,6 +208,53 @@ def _submit(args):
     _emit({"valid": True, "errors": {}, "submissionId": submission_id}, 0)
 
 
+def _parse_submission_id(raw):
+    # 仅接受 ASCII 数字组成的十进制整数（允许前导零），
+    # 数值须在 SQLite INTEGER 主键范围 1..2**63-1 内。
+    # isdigit 会接受非 ASCII 数字（如全角数字），故先限制 ASCII。
+    if not raw or not raw.isascii() or not raw.isdigit():
+        _invalid_input()
+    value = int(raw)
+    if not 1 <= value <= 9223372036854775807:
+        _invalid_input()
+    return value
+
+
+def _fetch(db_path, submission_id):
+    # 只读查询：数据库不存在时直接报 storage_error，绝不连接创建。
+    if not os.path.exists(db_path):
+        _storage_error()
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            cur = conn.execute(
+                "SELECT form, answers FROM submissions WHERE id = ?",
+                (submission_id,),
+            )
+            return cur.fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        # 文件不可读、不是有效 SQLite、缺表或缺列都落到此处
+        _storage_error()
+
+
+def _show(args):
+    submission_id = _parse_submission_id(args.id)
+    row = _fetch(args.db, submission_id)
+    if row is None:
+        _emit({"error": "not_found"}, 1)
+    form_text, answers_text = row
+    try:
+        form = json.loads(form_text, parse_constant=_reject_constant)
+        answers = json.loads(answers_text, parse_constant=_reject_constant)
+    except (ValueError, TypeError):
+        _storage_error()
+    if not isinstance(form, dict) or not isinstance(answers, dict):
+        _storage_error()
+    _emit({"submissionId": submission_id, "form": form, "answers": answers}, 0)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="forms")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -211,9 +262,14 @@ def main(argv=None):
     submit.add_argument("--form", required=True, help="表单 JSON 文件路径")
     submit.add_argument("--answers", required=True, help="答卷 JSON 文件路径")
     submit.add_argument("--db", required=True, help="SQLite 数据库路径")
+    show = subparsers.add_parser("show", help="按编号读取一份历史答卷")
+    show.add_argument("--db", required=True, help="SQLite 数据库路径")
+    show.add_argument("--id", required=True, help="提交编号")
     args = parser.parse_args(argv)
     if args.command == "submit":
         _submit(args)
+    elif args.command == "show":
+        _show(args)
 
 
 if __name__ == "__main__":
